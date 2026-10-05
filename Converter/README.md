@@ -1,5 +1,7 @@
 # MC/DC to ParaView Converter
 
+*By Brady Lemke, Oregon State University*
+
 Tools for viewing MC/DC problems in ParaView.
 The converter turns an MC/DC input file into a geometry file and an MC/DC output (`.h5`) file into tally files, and both open directly in ParaView.
 
@@ -14,7 +16,7 @@ The converter turns an MC/DC input file into a geometry file and an MC/DC output
 
 - Python 3 with `numpy`, `h5py`, and `vtk`
 - ParaView 6.1.1
-- The `Converter` folder, with your input and/or output files
+- The converter scripts, kept together in one folder
 - An MC/DC input file (`.py`) and/or output file (`.h5`) to convert
 
 ## Installation
@@ -30,10 +32,10 @@ Skip either step if it is already installed.
 
 ## Converting Files
 
-Move into the `Converter` folder:
+Open a terminal and move into the folder that holds the converter scripts:
 
 ```
-cd path/to/VisualVTK/Converter
+cd path/to/converter_scripts
 ```
 
 Run `mcdc_convert.py` with your input and output files:
@@ -49,7 +51,7 @@ python3 mcdc_convert.py --input your_file.py
 python3 mcdc_convert.py --output your_file.h5
 ```
 
-The script prints its progress and writes the new files into the same folder.
+The script prints its progress and writes the new files next to the input or output file it was given.
 It creates the following files:
 
 | File                            | Contents                                                      |
@@ -132,8 +134,6 @@ Hold `Ctrl` (`Cmd` on Mac) to add to a selection and `Shift` to subtract.
 Press `V` to open **Find Data**, which selects cells by value (e.g. `flux` `is max`).
 Set the color map to log scale (**View > Color Map Editor**) so low-flux cells are visible.
 
-More on filters, coloring, comparing runs, and saving your work is in `Converter_Wiki.md`.
-
 ## Troubleshooting
 
 | Problem                                      | Fix                                                                                   |
@@ -145,8 +145,8 @@ More on filters, coloring, comparing runs, and saving your work is in `Converter
 | The geometry hides the flux                  | Lower its Opacity or turn it off.                                                     |
 | Cells on the inside will not select          | Use `F` instead of `S`.                                                               |
 | The geometry looks blocky                    | This is the resolution of the tally mesh, not a ParaView setting.                     |
-| The converter cannot find a file             | Keep the input `.py` and output `.h5` in the same folder as the scripts, or pass the full path. |
+| The converter cannot find a file             | Run the command from the folder with the scripts and pass the full path to the input or output file, e.g. `--input /path/to/your_file.py`. |
 
 ## Reporting Bugs
 
-Questions or bugs can be sent to Brady Lemke at lemkeb@oregonstate.edu.
+If you run into any trouble or find a bug, email me at lemkeb@oregonstate.edu.
