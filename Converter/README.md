@@ -8,7 +8,7 @@ The converter turns an MC/DC input file into a geometry file and an MC/DC output
 ## Features
 
 - Geometry extracted straight from the input `.py` file, without running MC/DC
-- Volume tallies (flux) written as `.vtr` and surface tallies (current) written as `.vtp`
+- Volume tallies (flux, energy deposition, and any other score on an x, y, z mesh) written as `.vtr` and surface tallies (current) written as `.vtp`
 - One command converts both the input and output file
 - Works on any MC/DC input or output file, with no per-problem setup
 
@@ -87,7 +87,6 @@ The geometry extractor reads these surfaces from the input file:
 - Cylinders: `CylinderX`, `CylinderY`, `CylinderZ`
 
 Regions built from these with `&` (and) and `|` (or) are supported, including boxes, combined boxes, and shapes with spheres and cylinders.
-Write surfaces with their named arguments, e.g. `Sphere(center=[0, 0, 0], radius=2.0)`.
 
 If your problem uses other shapes, or you run into any issues or errors, contact me using the information at the bottom of this page.
 I can look into it and add or adjust the extractor for your problem.
@@ -102,7 +101,7 @@ It calls the other four.
 | `mcdc_convert.py`       | Reads `--input` and `--output` and calls whichever of the other files it needs.                   |
 | `extract_geometry.py`   | Reads the geometry from the input file. Tries the box reader first, then the curve reader.        |
 | `mcdc_auto_convert.py`  | Checks what kind of tallies the `.h5` file has and sends them to the right converter.             |
-| `h5_to_vtr.py`          | Writes volume (flux) tallies as `.vtr`. This is the file to load first in ParaView.               |
+| `h5_to_vtr.py`          | Writes volume tallies (flux, edep, and any other score on a mesh) as `.vtr`. This is the file to load first in ParaView.               |
 | `h5_to_vtp.py`          | Writes surface-current tallies as `.vtp`.                                                         |
 
 The box reader matches planes combined into a box shape, which is exact and fast.
@@ -141,6 +140,70 @@ To select cells in the 3D view, drag a box with one of these hotkeys:
 Hold `Ctrl` (`Cmd` on Mac) to add to a selection and `Shift` to subtract.
 Press `V` to open **Find Data**, which selects cells by value (e.g. `flux` `is max`).
 Set the color map to log scale (**View > Color Map Editor**) so low-flux cells are visible.
+
+### Filter Tips
+
+**Threshold**
+
+- Set **Scalars** to the tally name (the cell icon means cell data).
+- Set the **Lower Threshold** just above 0 (e.g. `1e-30`) and the **Upper Threshold** to the data max to hide empty cells.
+- To show only the hottest cells, set the lower value to the flux level you care about.
+- Use the **Threshold Method** dropdown for Between, Below Lower Threshold, or Above Upper Threshold.
+
+**Slice**
+
+- Set **Slice Type** to Plane, then set the **Normal** to the axis you want to cut across (e.g. `0 0 1` cuts across z) and the **Origin** to where the cut sits.
+- Turn on **Show Plane** to drag the cut by hand, then turn it off again.
+- Click the matching axis button in the toolbar to look straight at the slice.
+- Use **Slice Offset Values** to add several cuts at once.
+- A slice of a volume tally keeps the cell values, so it stays blocky.
+  That is the real tally mesh.
+
+**Clip**
+
+- Works like Slice but removes one side of the data instead of making a flat surface.
+- Turn on **Crinkle clip** to keep whole cells instead of cutting them, which keeps cell values exact.
+- Use **Invert** to switch which side is kept.
+
+**Cell Data to Point Data**
+
+- Tally values live on cells.
+  This filter averages them onto the mesh points so the data can be smoothed or contoured.
+- Run it before **Contour**, which needs point data.
+- The values it makes are averages, not the exact tally values.
+  Use the original cell data when reading exact numbers.
+
+**Contour**
+
+1. Select the data and run **Calculator** with **Attribute Type** set to Cell Data and the expression `log10(flux+1e-30)`, so low values spread out evenly.
+2. Run **Cell Data to Point Data** on the Calculator result.
+3. Run **Contour** on that result and set **Contour By** to the new array.
+4. Add values in the **Isosurfaces** list, e.g. `-8`, `-6`, `-4` for flux at 1e-8, 1e-6, and 1e-4.
+5. Lower the contour **Opacity** to about 0.5 so the surfaces can be seen through each other.
+
+**Calculator**
+
+- Set **Attribute Type** to Cell Data to work on tally values.
+- The result name defaults to `Result`, so change it to something readable like `log_flux`.
+- Useful expressions: `log10(flux+1e-30)` and `flux*1e6` to rescale.
+
+**Plot Over Line**
+
+- Set **Point1** and **Point2** to the start and end of the line, or click **Select Points On** and pick them in the 3D view.
+- Set the sampling pattern to **Sample At Cell Boundaries** so the plot follows the real cell values.
+- The result opens as a line chart, and the same data is in the SpreadSheet View.
+- Set the chart's y axis to log scale for flux.
+
+**Cell Centers**
+
+- Makes a point at the middle of each cell with the cell values attached.
+- Open the SpreadSheet View on it to see the x, y, z of every cell next to its value.
+
+**Order matters**
+
+- Each filter works on whatever is selected in the Pipeline Browser, so select the right item before adding one.
+- A common chain is Threshold, then Slice, or Calculator, then Cell Data to Point Data, then Contour.
+- Turn off the eye icon on the original data when a filter's output is hidden behind it.
 
 ## Troubleshooting
 
