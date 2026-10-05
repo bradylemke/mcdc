@@ -8,7 +8,7 @@ The converter turns an MC/DC input file into a geometry file and an MC/DC output
 ## Features
 
 - Geometry extracted straight from the input `.py` file, without running MC/DC
-- Volume tallies (flux, energy deposition, and any other score on an x, y, z mesh) written as `.vtr` and surface tallies (current) written as `.vtp`
+- Volume tallies (like flux) written as `.vtr` and surface tallies (like current) written as `.vtp`
 - One command converts both the input and output file
 - Works on any MC/DC input or output file, with no per-problem setup
 
@@ -101,8 +101,8 @@ It calls the other four.
 | `mcdc_convert.py`       | Reads `--input` and `--output` and calls whichever of the other files it needs.                   |
 | `extract_geometry.py`   | Reads the geometry from the input file. Tries the box reader first, then the curve reader.        |
 | `mcdc_auto_convert.py`  | Checks what kind of tallies the `.h5` file has and sends them to the right converter.             |
-| `h5_to_vtr.py`          | Writes volume tallies (flux, edep, and any other score on a mesh) as `.vtr`. This is the file to load first in ParaView.               |
-| `h5_to_vtp.py`          | Writes surface-current tallies as `.vtp`.                                                         |
+| `h5_to_vtr.py`          | Writes volume tallies (like flux) as `.vtr`. This is the file to load first in ParaView.               |
+| `h5_to_vtp.py`          | Writes surface tallies (like current) as `.vtp`.                                                         |
 
 The box reader matches planes combined into a box shape, which is exact and fast.
 If a cell is not a plain box, the curve reader handles spheres and cylinders using VTK boolean shapes.
