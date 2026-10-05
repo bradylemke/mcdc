@@ -145,19 +145,21 @@ Set the color map to log scale (**View > Color Map Editor**) so low-flux cells a
 
 **Threshold**
 
-- Set **Scalars** to the tally name (the cell icon means cell data).
-- Set the **Lower Threshold** just above 0 (e.g. `1e-30`) and the **Upper Threshold** to the data max to hide empty cells.
-- To show only the hottest cells, set the lower value to the flux level you care about.
-- Use the **Threshold Method** dropdown for Between, Below Lower Threshold, or Above Upper Threshold.
+1. Set **Scalars** to the tally name (the cell icon means cell data).
+2. Set the **Lower Threshold** just above 0 (e.g. `1e-30`) and the **Upper Threshold** to the data max to hide empty cells.
+3. Click **Apply**.
+
+To show only the hottest cells, set the lower value to the flux level you care about.
+The **Threshold Method** dropdown switches between Between, Below Lower Threshold, and Above Upper Threshold.
 
 **Slice**
 
-- Set **Slice Type** to Plane, then set the **Normal** to the axis you want to cut across (e.g. `0 0 1` cuts across z) and the **Origin** to where the cut sits.
-- Turn on **Show Plane** to drag the cut by hand, then turn it off again.
-- Click the matching axis button in the toolbar to look straight at the slice.
-- Use **Slice Offset Values** to add several cuts at once.
-- A slice of a volume tally keeps the cell values, so it stays blocky.
-  That is the real tally mesh.
+1. Set **Slice Type** to Plane.
+2. Set the **Normal** to the axis you want to cut across (e.g. `0 0 1` cuts across z) and the **Origin** to where the cut sits.
+3. Click **Apply**, then click the matching axis button in the toolbar to look straight at the slice.
+
+Turn on **Show Plane** to drag the cut by hand, and use **Slice Offset Values** to add several cuts at once.
+A slice of a volume tally keeps the cell values, so it stays blocky. That is the real tally mesh.
 
 **Clip**
 
@@ -182,9 +184,9 @@ Set the color map to log scale (**View > Color Map Editor**) so low-flux cells a
 
 **Order matters**
 
-- Each filter works on whatever is selected in the Pipeline Browser, so select the right item before adding one.
-- A common chain is Threshold, then Slice, or Cell Data to Point Data, then Contour.
-- Turn off the eye icon on the original data when a filter's output is hidden behind it.
+Each filter works on whatever is selected in the Pipeline Browser, so select the right item before adding one.
+Filters can be chained, like Threshold then Slice, or Cell Data to Point Data then Contour.
+If a filter's output is hidden behind the original data, turn off the eye icon on the original.
 
 ## Troubleshooting
 
