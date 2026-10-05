@@ -175,34 +175,15 @@ Set the color map to log scale (**View > Color Map Editor**) so low-flux cells a
 
 **Contour**
 
-1. Select the data and run **Calculator** with **Attribute Type** set to Cell Data and the expression `log10(flux+1e-30)`, so low values spread out evenly.
-2. Run **Cell Data to Point Data** on the Calculator result.
-3. Run **Contour** on that result and set **Contour By** to the new array.
-4. Add values in the **Isosurfaces** list, e.g. `-8`, `-6`, `-4` for flux at 1e-8, 1e-6, and 1e-4.
-5. Lower the contour **Opacity** to about 0.5 so the surfaces can be seen through each other.
-
-**Calculator**
-
-- Set **Attribute Type** to Cell Data to work on tally values.
-- The result name defaults to `Result`, so change it to something readable like `log_flux`.
-- Useful expressions: `log10(flux+1e-30)` and `flux*1e6` to rescale.
-
-**Plot Over Line**
-
-- Set **Point1** and **Point2** to the start and end of the line, or click **Select Points On** and pick them in the 3D view.
-- Set the sampling pattern to **Sample At Cell Boundaries** so the plot follows the real cell values.
-- The result opens as a line chart, and the same data is in the SpreadSheet View.
-- Set the chart's y axis to log scale for flux.
-
-**Cell Centers**
-
-- Makes a point at the middle of each cell with the cell values attached.
-- Open the SpreadSheet View on it to see the x, y, z of every cell next to its value.
+1. Select the data and run **Cell Data to Point Data**.
+2. Run **Contour** on that result and set **Contour By** to the tally name.
+3. Add values in the **Isosurfaces** list.
+4. Lower the contour **Opacity** to about 0.5 so the surfaces can be seen through each other.
 
 **Order matters**
 
 - Each filter works on whatever is selected in the Pipeline Browser, so select the right item before adding one.
-- A common chain is Threshold, then Slice, or Calculator, then Cell Data to Point Data, then Contour.
+- A common chain is Threshold, then Slice, or Cell Data to Point Data, then Contour.
 - Turn off the eye icon on the original data when a filter's output is hidden behind it.
 
 ## Troubleshooting
