@@ -78,11 +78,19 @@ python3 mcdc_auto_convert.py your_file.h5 tracklength_tally_0
 
 For surface tallies where the box cannot be worked out automatically, `mcdc_auto_convert.py` and `h5_to_vtp.py` also take `--bounds x0 x1 y0 y1 z0 z1`.
 
-### Skipped cells
+### Supported Shapes
 
-If a warning says some cells were skipped, the extractor does not handle that shape yet.
-This applies to cones, tori, lattices, and a box with a union cut out of it.
-Those cells are left out of the geometry file and everything else is still converted.
+The geometry extractor reads these surfaces from the input file:
+
+- Planes: `PlaneX`, `PlaneY`, `PlaneZ`
+- Spheres: `Sphere`
+- Cylinders: `CylinderX`, `CylinderY`, `CylinderZ`
+
+Regions built from these with `&` (and) and `|` (or) are supported, including boxes, combined boxes, and shapes with spheres and cylinders.
+Write surface arguments as keywords (e.g. `radius=2.0`). Their order does not matter.
+
+If your problem uses other shapes, from simple ones like cones to more complex geometry, email me at lemkeb@oregonstate.edu and I can add or adjust the extractor for it.
+If the converter prints a warning about a cell, send me the input file and I can look at it.
 
 ## The Converter Files
 
