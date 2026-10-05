@@ -87,10 +87,10 @@ The geometry extractor reads these surfaces from the input file:
 - Cylinders: `CylinderX`, `CylinderY`, `CylinderZ`
 
 Regions built from these with `&` (and) and `|` (or) are supported, including boxes, combined boxes, and shapes with spheres and cylinders.
-Write surface arguments as keywords (e.g. `radius=2.0`). Their order does not matter.
+Write surfaces with their named arguments, e.g. `Sphere(center=[0, 0, 0], radius=2.0)`.
 
-If your problem uses other shapes, from simple ones like cones to more complex geometry, email me at lemkeb@oregonstate.edu and I can add or adjust the extractor for it.
-If the converter prints a warning about a cell, send me the input file and I can look at it.
+If your problem uses other shapes, or you run into any issues or errors, contact me using the information at the bottom of this page.
+I can look into it and add or adjust the extractor for your problem.
 
 ## The Converter Files
 
