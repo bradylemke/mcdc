@@ -73,19 +73,19 @@ class CellFinder:
         for node in tree.body:
             if isinstance(node, ast.FunctionDef):
                 self.functions[node.name] = node
-        self._walk(tree.body, self.module_env)
+        self.walk(tree.body, self.module_env)
 
-    def _walk(self, stmts, env):
+    def walk(self, stmts, env):
         for node in stmts:
             if isinstance(node, ast.Assign):
-                self._assign(node, env)
+                self.handle_assignment(node, env)
             elif isinstance(node, ast.Expr) and isinstance(node.value, ast.Call):
-                self._maybe_cell(node.value, env)
-                self._inline_if_needed(node.value, env)
+                self.record_if_cell(node.value, env)
+                self.follow_user_function(node.value, env)
             elif isinstance(node, ast.Return):
-                self._return(node, env)
+                self.handle_return(node, env)
 
-    def _assign(self, node, env):
+    def handle_assignment(self, node, env):
         if len(node.targets) != 1:
             return
 
@@ -94,13 +94,13 @@ class CellFinder:
 
         if isinstance(target, (ast.Tuple, ast.List)):
             # a, b, c = x, y, z
-            items = self._resolve_iterable(value_node, env)
+            items = self.resolve_loop_items(value_node, env)
             if items is not None:
                 for elt, (val_node, val_env) in zip(target.elts, items):
                     if isinstance(elt, ast.Name):
                         env[elt.id] = ("node", val_node, val_env)
             if isinstance(value_node, ast.Call):
-                self._inline_if_needed(value_node, env)
+                self.follow_user_function(value_node, env)
             return
 
         if not isinstance(target, ast.Name):
@@ -111,51 +111,51 @@ class CellFinder:
             elt = value_node.elt
             if isinstance(elt, ast.Call) and get_call_name(elt) == "mcdc.Cell" and len(value_node.generators) == 1:
                 gen = value_node.generators[0]
-                items = self._resolve_iterable(gen.iter, env) or []
+                items = self.resolve_loop_items(gen.iter, env) or []
                 for item_node, item_env in items:
                     loop_env = dict(env)
                     if isinstance(gen.target, ast.Name):
                         loop_env[gen.target.id] = ("node", item_node, item_env)
-                    self._record_cell(elt, loop_env)
+                    self.save_cell(elt, loop_env)
             return
 
         if isinstance(value_node, ast.Call) and get_call_name(value_node) == "mcdc.Cell":
-            self._maybe_cell(value_node, env)
+            self.record_if_cell(value_node, env)
             return
 
         # check if defined internally
         if isinstance(value_node, ast.Call):
-            self._inline_if_needed(value_node, env)
+            self.follow_user_function(value_node, env)
 
         env[name] = ("node", value_node, dict(env))
 
-    def _return(self, node, env):
+    def handle_return(self, node, env):
         if node.value is None:
             return
         elts = node.value.elts if isinstance(node.value, (ast.Tuple, ast.List)) else [node.value]
         for elt in elts:
             if isinstance(elt, ast.Call) and get_call_name(elt) == "mcdc.Cell":
-                self._record_cell(elt, env)
+                self.save_cell(elt, env)
 
     # resolve iterable nodes
-    def _resolve_iterable(self, node, env):
+    def resolve_loop_items(self, node, env):
         if isinstance(node, (ast.Tuple, ast.List)):
             return [(e, env) for e in node.elts]
         if isinstance(node, ast.Name) and node.id in env:
             v = env[node.id]
             if v[0] == "node":
-                return self._resolve_iterable(v[1], v[2])
+                return self.resolve_loop_items(v[1], v[2])
         return None
 
-    def _maybe_cell(self, call_node, env):
+    def record_if_cell(self, call_node, env):
         if get_call_name(call_node) == "mcdc.Cell":
-            self._record_cell(call_node, env)
+            self.save_cell(call_node, env)
 
-    def _inline_if_needed(self, call_node, env):
+    def follow_user_function(self, call_node, env):
         if get_call_name(call_node) in self.functions:
-            self._call_function(call_node, env)
+            self.run_user_function(call_node, env)
 
-    def _record_cell(self, call_node, env):
+    def save_cell(self, call_node, env):
         region_node = None
         fill_name = "?"
         for kw in call_node.keywords:
@@ -168,7 +168,7 @@ class CellFinder:
         if region_node is not None:
             self.cells.append((fill_name, region_node, env))
 
-    def _call_function(self, call_node, env):
+    def run_user_function(self, call_node, env):
         func = self.functions[get_call_name(call_node)]
         call_env = dict(self.module_env)
         params = [a.arg for a in func.args.args]
@@ -177,7 +177,7 @@ class CellFinder:
                 call_env[params[i]] = ("node", arg_node, dict(env))
         for kw in call_node.keywords:
             call_env[kw.arg] = ("node", kw.value, dict(env))
-        self._walk(func.body, call_env)
+        self.walk(func.body, call_env)
 
 
 # ======================================================================================
@@ -245,9 +245,9 @@ class BoxReader:
             left = self.resolve(node.left, env)
             right = self.resolve(node.right, env)
             if isinstance(node.op, ast.BitAnd):
-                return self._and(left, right)
+                return self.combine_and(left, right)
             if isinstance(node.op, ast.BitOr):
-                return self._or(left, right)
+                return self.combine_or(left, right)
             if left[0] == "num" and right[0] == "num":
                 a, b = left[1], right[1]
                 if isinstance(node.op, ast.Add):
@@ -261,11 +261,11 @@ class BoxReader:
             return ("bad", "unsupported binary operator")
 
         if isinstance(node, ast.Call):
-            return self._call(node, env)
+            return self.resolve_call(node, env)
 
         return ("bad", f"can't handle this kind of code: {type(node).__name__}")
 
-    def _call(self, node, env):
+    def resolve_call(self, node, env):
         name = get_call_name(node)
         axes = {"mcdc.Surface.PlaneX": "x", "mcdc.Surface.PlaneY": "y", "mcdc.Surface.PlaneZ": "z"}
 
@@ -293,7 +293,7 @@ class BoxReader:
 
         return ("bad", f"can't box-resolve '{name}'")
 
-    def _and(self, left, right):
+    def combine_and(self, left, right):
         if left[0] == "bad":
             return left
         if right[0] == "bad":
@@ -311,7 +311,7 @@ class BoxReader:
                 return ("bad", f"can't combine a '{side[0]}' with &")
         return ("box", box)
 
-    def _or(self, left, right):
+    def combine_or(self, left, right):
         if left[0] == "bad":
             return left
         if right[0] == "bad":
@@ -390,15 +390,19 @@ class CurveReader:
                 if inner[0] == "num" and isinstance(node.op, ast.USub):
                     return ("num", -inner[1])
                 return ("bad", "unary +/- on something unexpected")
-            return ("bad", "unsupported unary operator (no ~ here)")
+            if isinstance(node.op, ast.Invert):
+                if inner[0] == "bad":
+                    return inner
+                return ("not", inner)
+            return ("bad", "unsupported unary operator")
 
         if isinstance(node, ast.BinOp):
             left = self.resolve(node.left, env)
             right = self.resolve(node.right, env)
             if isinstance(node.op, ast.BitAnd):
-                return self._and(left, right)
+                return self.combine_and(left, right)
             if isinstance(node.op, ast.BitOr):
-                return ("bad", "a union with a curved shape isn't supported yet")
+                return self.combine_or(left, right)
             if left[0] == "num" and right[0] == "num":
                 a, b = left[1], right[1]
                 if isinstance(node.op, ast.Add):
@@ -412,11 +416,23 @@ class CurveReader:
             return ("bad", "unsupported binary operator")
 
         if isinstance(node, ast.Call):
-            return self._call(node, env)
+            return self.resolve_call(node, env)
 
         return ("bad", f"can't handle this kind of code: {type(node).__name__}")
 
-    def _read_keyword(self, node, env, names):
+    # union of plain boxes, only usable as something to cut out with ~
+    def combine_or(self, left, right):
+        pieces = []
+        for side in (left, right):
+            if side[0] == "join":
+                pieces.extend(side[1])
+            elif side[0] == "combo" and side[2] is None:
+                pieces.append(side)
+            else:
+                return ("bad", "a union with a curved shape isn't supported yet")
+        return ("join", pieces)
+
+    def read_keyword(self, node, env, names):
         for kw in node.keywords:
             if kw.arg in names:
                 v = self.resolve(kw.value, env)
@@ -424,7 +440,30 @@ class CurveReader:
                     return v[1]
         return None
 
-    def _read_keyword_list(self, node, env, names):
+    # same as read_keyword, but falls back to the argument's position in the call
+    # the first argument is the name, so center is second and radius is third
+    def read_arg(self, node, env, names, slot):
+        v = self.read_keyword(node, env, names)
+        if v is None and len(node.args) > slot:
+            r = self.resolve(node.args[slot], env)
+            if r[0] == "num":
+                return r[1]
+        return v
+
+    def read_arg_list(self, node, env, names, slot):
+        v = self.read_keyword_list(node, env, names)
+        if v is None and len(node.args) > slot:
+            r = self.resolve(node.args[slot], env)
+            if r[0] == "tuple":
+                vals = []
+                for item in r[1]:
+                    if item[0] != "num":
+                        return None
+                    vals.append(item[1])
+                return vals
+        return v
+
+    def read_keyword_list(self, node, env, names):
         for kw in node.keywords:
             if kw.arg in names:
                 v = self.resolve(kw.value, env)
@@ -437,23 +476,27 @@ class CurveReader:
                     return vals
         return None
 
-    def _call(self, node, env):
+    def resolve_call(self, node, env):
         name = get_call_name(node)
 
         if name in ("mcdc.Surface.PlaneX", "mcdc.Surface.PlaneY", "mcdc.Surface.PlaneZ"):
             axis = {"mcdc.Surface.PlaneX": "x", "mcdc.Surface.PlaneY": "y", "mcdc.Surface.PlaneZ": "z"}[name]
-            value = self._read_keyword(node, env, (axis,))
+            value = self.read_keyword(node, env, (axis,))
             if value is None and node.args:
-                v = self.resolve(node.args[0], env)
-                if v[0] == "num":
-                    value = v[1]
+                # value is the second argument after the name, but also accepts just the value
+                for slot in (1, 0):
+                    if len(node.args) > slot:
+                        v = self.resolve(node.args[slot], env)
+                        if v[0] == "num":
+                            value = v[1]
+                            break
             if value is None:
                 return ("bad", "couldn't read the surface's value")
             return ("plane", axis, value)
 
         if name == "mcdc.Surface.Sphere":
-            center = self._read_keyword_list(node, env, ("center",)) or [0.0, 0.0, 0.0]
-            r = self._read_keyword(node, env, ("radius",))
+            center = self.read_arg_list(node, env, ("center",), 1) or [0.0, 0.0, 0.0]
+            r = self.read_arg(node, env, ("radius",), 2)
             if r is None:
                 r = 0.0
             if len(center) != 3:
@@ -464,13 +507,13 @@ class CurveReader:
         if name in ("mcdc.Surface.CylinderX", "mcdc.Surface.CylinderY", "mcdc.Surface.CylinderZ"):
             axis = {"mcdc.Surface.CylinderX": "x", "mcdc.Surface.CylinderY": "y", "mcdc.Surface.CylinderZ": "z"}[name]
             others = [a for a in ("x", "y", "z") if a != axis]
-            center = self._read_keyword_list(node, env, ("center",))
-            r = self._read_keyword(node, env, ("radius",))
+            center = self.read_arg_list(node, env, ("center",), 1)
+            r = self.read_arg(node, env, ("radius",), 2)
 
             # handles different center formats defauls [0,0]
             if center is None:
-                c1 = self._read_keyword(node, env, (others[0],))
-                c2 = self._read_keyword(node, env, (others[1],))
+                c1 = self.read_keyword(node, env, (others[0],))
+                c2 = self.read_keyword(node, env, (others[1],))
                 center = [c1 or 0.0, c2 or 0.0] if (c1 is not None or c2 is not None) else [0.0, 0.0]
 
             if r is None:
@@ -485,13 +528,16 @@ class CurveReader:
 
         return ("bad", f"don't recognize '{name}'")
 
-    def _and(self, left, right):
+    def combine_and(self, left, right):
         if left[0] == "bad":
             return left
         if right[0] == "bad":
             return right
 
-        def as_combo(x):
+        if any(s[0] in ("not", "minus") for s in (left, right)):
+            return self.combine_subtraction(left, right)
+
+        def to_combo(x):
             if x[0] == "half":
                 return apply_half(new_box(), x[1], x[2], x[3]), None
             if x[0] == "box":
@@ -502,7 +548,7 @@ class CurveReader:
                 return x[1], x[2]
             return None
 
-        lc, rc = as_combo(left), as_combo(right)
+        lc, rc = to_combo(left), to_combo(right)
         if lc is None or rc is None:
             return ("bad", f"can't combine a '{left[0]}'/'{right[0]}' with &")
 
@@ -511,6 +557,30 @@ class CurveReader:
         if lcurve and rcurve:
             return ("bad", "can't combine two curved shapes in one cell yet")
         return ("combo", merge_boxes(lbox, rbox), lcurve or rcurve)
+
+    # handles A & ~B, collects the shape to keep and the shapes to cut out of it
+    def combine_subtraction(self, left, right):
+        keep = None
+        cuts = []
+        for side in (left, right):
+            if side[0] == "not":
+                if side[1][0] == "join":
+                    cuts.extend(side[1][1])
+                else:
+                    cuts.append(side[1])
+                continue
+            if side[0] == "minus":
+                part = side[1]
+                cuts.extend(side[2])
+            else:
+                part = side
+            keep = part if keep is None else self.combine_and(keep, part)
+            if keep[0] == "bad":
+                return keep
+
+        if keep is None:
+            return ("bad", "nothing to cut the ~ shape out of")
+        return ("minus", keep, cuts)
 
 
 # ======================================================================================
@@ -527,8 +597,8 @@ def make_sphere(x, y, z, r):
     sphere.Update()
     return sphere.GetOutput()
 
-def make_cylinder(axis, c1, c2, r, lo, hi):
-    pad = (hi - lo) * 0.05 + 0.01
+def make_cylinder(axis, c1, c2, r, lo, hi, padded=True):
+    pad = (hi - lo) * 0.05 + 0.01 if padded else 0.0
     mid = (lo + hi) / 2
 
     cyl = vtk.vtkCylinderSource()
@@ -582,7 +652,19 @@ def boolean_combine(mesh_a, mesh_b, op):
     boolean.SetInputData(0, prep(mesh_a))
     boolean.SetInputData(1, prep(mesh_b))
     boolean.Update()
-    return boolean.GetOutput()
+
+    # redo normals so sharp edges stay sharp, the ones from prep smooth over them
+    normals = vtk.vtkPolyDataNormals()
+    normals.SetInputData(boolean.GetOutput())
+    normals.SplittingOn()
+    normals.SetFeatureAngle(30)
+    normals.ConsistencyOn()
+    normals.AutoOrientNormalsOff()
+    normals.Update()
+
+    result = normals.GetOutput()
+    result.GetPointData().SetTCoords(None)
+    return result
 
 
 def natural_extent(kind, params):
@@ -604,10 +686,167 @@ def fill_missing_bounds(box, extent):
                 filled[axis][i] = extent[axis][i]
     return filled
 
+# mesh for one piece of a subtraction, a plain box or a curved shape
+def piece_to_mesh(result):
+    if result[0] == "combo" and result[2] is None:
+        if box_complete(result[1]):
+            return make_cube(result[1]), None
+        return None, "a ~ shape or the shape it's cut from isn't fully bounded"
+    return curve_to_mesh(result)
+
+
+# exact outer surface of some boxes joined together with boxes cut out, no vtk boolean needed
+def boxes_to_surface(boxes, cuts):
+    edges = {}
+    for axis in "xyz":
+        vals = set()
+        for b in boxes + cuts:
+            vals.update(b[axis])
+        edges[axis] = sorted(vals)
+
+    # a grid cell is solid if its center is in one of the boxes and in no cut
+    def solid(i, j, k):
+        idx = {"x": i, "y": j, "z": k}
+        if any(idx[a] < 0 or idx[a] >= len(edges[a]) - 1 for a in "xyz"):
+            return False
+        center = {a: (edges[a][idx[a]] + edges[a][idx[a] + 1]) / 2 for a in "xyz"}
+        if not any(all(b[a][0] < center[a] < b[a][1] for a in "xyz") for b in boxes):
+            return False
+        for c in cuts:
+            if all(c[a][0] < center[a] < c[a][1] for a in "xyz"):
+                return False
+        return True
+
+    points = vtk.vtkPoints()
+    quads = vtk.vtkCellArray()
+    counts = [len(edges[a]) - 1 for a in "xyz"]
+    sizes = dict(zip("xyz", counts))
+    nxt = {"x": ("y", "z"), "y": ("z", "x"), "z": ("x", "y")}
+
+    def cell_at(axis, p, u_axis, u, v_axis, v):
+        idx = {axis: p, u_axis: u, v_axis: v}
+        return idx["x"], idx["y"], idx["z"]
+
+    # one flat face, corners ordered so the normal points out of the solid
+    def add_face(axis, p, sign, u_axis, u0, u1, v_axis, v0, v1):
+        c = edges[axis][p + 1 if sign > 0 else p]
+        ua, ub = edges[u_axis][u0], edges[u_axis][u1 + 1]
+        va, vb = edges[v_axis][v0], edges[v_axis][v1 + 1]
+        corners = [(ua, va), (ub, va), (ub, vb), (ua, vb)]
+        if sign < 0:
+            corners.reverse()
+        ids = []
+        for u, v in corners:
+            pt = {axis: c, u_axis: u, v_axis: v}
+            ids.append(points.InsertNextPoint(pt["x"], pt["y"], pt["z"]))
+        quads.InsertNextCell(4, ids)
+
+    # on each plane, join exposed cells into the biggest rectangles
+    for axis in "xyz":
+        u_axis, v_axis = nxt[axis]
+        for sign in (-1, 1):
+            for p in range(sizes[axis]):
+                exposed = set()
+                for u in range(sizes[u_axis]):
+                    for v in range(sizes[v_axis]):
+                        if solid(*cell_at(axis, p, u_axis, u, v_axis, v)) and not solid(*cell_at(axis, p + sign, u_axis, u, v_axis, v)):
+                            exposed.add((u, v))
+
+                while exposed:
+                    u0, v0 = min(exposed)
+                    u1 = u0
+                    while (u1 + 1, v0) in exposed:
+                        u1 += 1
+                    v1 = v0
+                    while all((u, v1 + 1) in exposed for u in range(u0, u1 + 1)):
+                        v1 += 1
+                    for u in range(u0, u1 + 1):
+                        for v in range(v0, v1 + 1):
+                            exposed.discard((u, v))
+                    add_face(axis, p, sign, u_axis, u0, u1, v_axis, v0, v1)
+
+    mesh = vtk.vtkPolyData()
+    mesh.SetPoints(points)
+    mesh.SetPolys(quads)
+
+    clean = vtk.vtkCleanPolyData()
+    clean.SetInputData(mesh)
+    clean.Update()
+    return clean.GetOutput()
+
+
+# cut sitting fully inside the mesh, keeps it as an inner surface facing inward
+def add_cavity(mesh, cut_mesh):
+    flip = vtk.vtkReverseSense()
+    flip.SetInputData(cut_mesh)
+    flip.ReverseCellsOn()
+    flip.ReverseNormalsOn()
+    flip.Update()
+
+    append = vtk.vtkAppendPolyData()
+    append.AddInputData(mesh)
+    append.AddInputData(flip.GetOutput())
+    append.Update()
+    return append.GetOutput()
+
+
+# stretches a cut past any side it shares with the mesh so the boolean has no touching faces
+def stretch_cut(mesh, cut_mesh):
+    mb = mesh.GetBounds()
+    cb = cut_mesh.GetBounds()
+    center = [(cb[2 * a] + cb[2 * a + 1]) / 2 for a in range(3)]
+    scale = [1.0, 1.0, 1.0]
+    for a in range(3):
+        lo, hi = mb[2 * a], mb[2 * a + 1]
+        clo, chi = cb[2 * a], cb[2 * a + 1]
+        tol = 1e-6 * (hi - lo + 1.0)
+        if clo <= lo + tol and chi >= hi - tol and chi > clo:
+            scale[a] = max(1.0, ((hi - lo) * 1.1 + 0.02) / (chi - clo))
+
+    if scale == [1.0, 1.0, 1.0]:
+        return cut_mesh
+
+    transform = vtk.vtkTransform()
+    transform.Translate(*center)
+    transform.Scale(*scale)
+    transform.Translate(*[-c for c in center])
+
+    mover = vtk.vtkTransformPolyDataFilter()
+    mover.SetTransform(transform)
+    mover.SetInputData(cut_mesh)
+    mover.Update()
+    return mover.GetOutput()
+
+
+# cuts every ~ shape out of the shape it sits in
+def subtract_to_mesh(result):
+    # plain boxes only, use the exact method
+    pieces = [result[1]] + list(result[2])
+    if all(p[0] == "combo" and p[2] is None and box_complete(p[1]) for p in pieces):
+        return boxes_to_surface([result[1][1]], [c[1] for c in result[2]]), None
+
+    mesh, reason = piece_to_mesh(result[1])
+    if mesh is None:
+        return None, reason
+
+    for cut in result[2]:
+        cut_mesh, reason = piece_to_mesh(cut)
+        if cut_mesh is None:
+            return None, reason
+        cut = boolean_combine(mesh, stretch_cut(mesh, cut_mesh), "difference")
+        if cut.GetNumberOfPoints() == 0:
+            cut = add_cavity(mesh, cut_mesh)
+        mesh = cut
+    return mesh, None
+
+
 # turns a CurveReader result into an actual mesh
 def curve_to_mesh(result):
     if result[0] == "bad":
         return None, result[1]
+
+    if result[0] == "minus":
+        return subtract_to_mesh(result)
 
     if result[0] == "curve":
         kind, params, side = result[1], result[2], result[3]
@@ -640,7 +879,7 @@ def curve_to_mesh(result):
             return None, f"the outside of a {kind} with no other bounds is unbounded"
         if kind == "sphere":
             return make_sphere(params["x"], params["y"], params["z"], params["r"]), None
-        return make_cylinder(axis, params["c1"], params["c2"], params["r"], lo, hi), None
+        return make_cylinder(axis, params["c1"], params["c2"], params["r"], lo, hi, padded=False), None
 
     filled = fill_missing_bounds(box, natural_extent(kind, params))
     if not box_complete(filled):
@@ -687,7 +926,11 @@ def extract(input_file):
         box_shapes = box_to_shapes(box_result)
 
         if box_shapes is not None:
-            meshes = [make_cube(b) for b in box_shapes]
+            # boxes joined with | become one surface with no walls between them
+            if len(box_shapes) > 1:
+                meshes = [boxes_to_surface(box_shapes, [])]
+            else:
+                meshes = [make_cube(b) for b in box_shapes]
         else:
             curve_result = curve_reader.resolve(region_node, env)
             mesh, reason = curve_to_mesh(curve_result)
